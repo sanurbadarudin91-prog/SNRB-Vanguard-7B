@@ -53,3 +53,7 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# ---- Generated reports (dihasilkan CI/run_eval.py) ----
+eval/report.json
+eval/last_report.json

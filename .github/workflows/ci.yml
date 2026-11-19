@@ -137,7 +137,7 @@ jobs:
       - name: Install minimal deps
         run: |
           python -m pip install --upgrade pip
-          pip install pyyaml requests
+          pip install pyyaml requests transformers jinja2
 
       - name: Validate dataset (data/samples.jsonl)
         run: |
@@ -167,17 +167,37 @@ jobs:
           python data/validate_dataset.py --path data/train.jsonl --strict
           python data/validate_dataset.py --path data/val.jsonl --strict
 
+      - name: Verify chat files are in sync (tidak ada drift)
+        run: |
+          # Dijalankan SEBELUM format: memastikan data/*.chat.jsonl yang
+          # di-commit memang hasil render terbaru dari train/val.jsonl.
+          # Memakai tokenizer asli Qwen2.5 (bukan estimasi offline).
+          python data/format_chat.py --input data/train.jsonl --verify
+          python data/format_chat.py --input data/val.jsonl --verify
+
+      - name: Check chat template token lengths vs max_seq_length
+        run: |
+          # --strict menggagalkan CI bila ada sampel melebihi max_seq_length
+          # pada configs/qlora_default.yaml. --no-write: tidak mengubah repo.
+          python data/format_chat.py --input data/train.jsonl --no-write --strict \
+            --report /tmp/train.format.json
+          python data/format_chat.py --input data/val.jsonl --no-write --strict \
+            --report /tmp/val.format.json
+
       - name: Run eval harness (mock mode)
         run: |
           python eval/run_eval.py \
             --mode mock \
             --json-out eval/report.json
 
-      - name: Upload eval report
+      - name: Upload eval & format reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: eval-report
-          path: eval/report.json
+          path: |
+            eval/report.json
+            /tmp/train.format.json
+            /tmp/val.format.json
           if-no-files-found: warn
           retention-days: 14
