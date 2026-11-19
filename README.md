@@ -1,5 +1,7 @@
 # SNRB-Vanguard-7B
 
+[![CI](https://github.com/sanurbadarudin91-prog/SNRB-Vanguard-7B/actions/workflows/ci.yml/badge.svg)](https://github.com/sanurbadarudin91-prog/SNRB-Vanguard-7B/actions/workflows/ci.yml)
+
 > Asisten teknis 7B yang di-fine-tune dengan QLoRA untuk **analisis defensif**:
 > analisis log/kode, hardening, triase insiden, dan OSINT legal dari sumber terbuka.
 
@@ -37,8 +39,11 @@ SNRB-Vanguard-7B/
 ├── README.md
 ├── requirements.txt          # dipisah: [CORE] API/validasi & [TRAINING/GPU]
 ├── .gitignore
+├── .github/
+│   └── workflows/
+│       └── ci.yml            # CI: sintaks + validasi + split + eval mock
 ├── data/
-│   ├── samples.jsonl         # dataset utama (73 sampel, format messages)
+│   ├── samples.jsonl         # dataset utama (167 sampel, format messages)
 │   ├── train.jsonl           # split training (dihasilkan split_dataset.py)
 │   ├── val.jsonl             # split validasi (dihasilkan split_dataset.py)
 │   ├── validate_dataset.py   # validator JSONL + statistik token
@@ -102,21 +107,34 @@ python eval/run_eval.py --mode local --base-url http://127.0.0.1:8000
 
 ## Dataset & Split
 
-`data/samples.jsonl` berisi **73 contoh** percakapan format `messages`
+`data/samples.jsonl` berisi **167 contoh** percakapan format `messages`
 (`system` → `user` → `assistant`) yang konsisten dengan persona:
 analisis log/kode, hardening, triase insiden, arsitektur sistem, dan OSINT legal.
 
 | Metrik | Nilai |
 |---|---|
-| Total sampel | 73 |
-| Total karakter | ~70.062 |
-| Estimasi token | ~17.490 (~239/sampel) |
-| Panjang token min/max | 161 / 284 |
+| Total sampel | 167 |
+| Total karakter | ~163.256 |
+| Estimasi token | ~40.755 (~244/sampel) |
+| Panjang token min/max | 161 / 292 |
+| Duplikat id / prompt | 0 |
+
+**Cakupan topik** — keamanan aplikasi (injection, SSRF, deserialization, upload,
+path traversal, race condition), keamanan cloud (AWS/Azure/GCP, IAM, S3, managed
+identity, metadata SSRF, Terraform state), container & Kubernetes (image
+hardening, resource limit, probe, RBAC, network policy), jaringan (nginx/Apache
+hardening, TLS, WAF tuning, DNS audit, rate limiting), data & database (RLS,
+EXPLAIN, pooling, least privilege, cache invalidation, backup 3-2-1), identitas
+(OAuth/PKCE, SAML vs OIDC, JWT storage, mobile pinning), deteksi & respons
+(SIEM log source, detection engineering, threat hunting, purple team, insiden,
+forensik, containment, recovery), serta arsitektur & operasi (SLO, error budget,
+capacity planning, DR test, zero-downtime deploy, feature flag, supply chain,
+lisensi, privasi/DSR, vendor risk, OSINT legal).
 
 **Pembagian train/val** (deterministik, `--seed 42`, `--val-ratio 0.2`):
 
 ```bash
-python data/split_dataset.py            # -> data/train.jsonl (58) + data/val.jsonl (15)
+python data/split_dataset.py            # -> data/train.jsonl (134) + data/val.jsonl (33)
 python data/split_dataset.py --val-ratio 0.15 --seed 7
 python data/split_dataset.py --no-validate
 ```
@@ -148,6 +166,44 @@ python eval/run_eval.py --json-out eval/last_report.json
 
 Exit code `0` bila semua lulus, `1` bila ada kegagalan — siap dipakai sebagai
 gate di CI.
+
+---
+
+## Continuous Integration
+
+Workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — berjalan otomatis
+pada **push** dan **pull_request** ke `main` (juga bisa dijalankan manual via
+`workflow_dispatch`).
+
+| Job | Langkah | Tujuan |
+|---|---|---|
+| `syntax` | `compileall` (api/data/eval/src/tools) | Semua modul Python bisa dikompilasi |
+| `syntax` | YAML check (`configs/`, `.github/`) | Semua YAML valid & parseable |
+| `syntax` | JSON/JSONL check (seluruh repo) | Setiap baris JSONL valid, tidak ada file rusak |
+| `data-eval` | `validate_dataset.py --strict` | Dataset utama 100% valid |
+| `data-eval` | `split_dataset.py` | Split train/val berhasil & disjoint |
+| `data-eval` | **drift check** (`git diff`) | `train.jsonl`/`val.jsonl` sinkron dengan `samples.jsonl` |
+| `data-eval` | validate train & val | Kedua split valid |
+| `data-eval` | `run_eval.py --mode mock` | Eval dasar lulus (gate) |
+| `data-eval` | upload artifact | Laporan `eval/report.json` tersimpan 14 hari |
+
+**Kontrol keamanan workflow:** `permissions: contents: read` (least privilege),
+`concurrency` membatalkan run lama, action di-pin ke versi mayor (`@v4`/`@v5`),
+dan tidak ada secret yang dipakai sehingga aman untuk PR dari fork.
+
+**Drift check** mencegah `train.jsonl`/`val.jsonl` basi: bila `samples.jsonl`
+diubah tanpa menjalankan ulang `split_dataset.py`, CI gagal dengan instruksi
+perbaikan.
+
+Jalankan seluruh pipeline secara lokal:
+
+```bash
+python -m compileall -q api data eval src tools
+python data/validate_dataset.py --path data/samples.jsonl --strict --show-errors
+python data/split_dataset.py
+git diff --exit-code -- data/train.jsonl data/val.jsonl   # harus bersih
+python eval/run_eval.py --mode mock
+```
 
 ---
 
@@ -234,13 +290,14 @@ Detail riset: [`docs/ai-models/`](docs/ai-models/README.md).
 ## Status
 
 - [x] Struktur repository modular
-- [x] Validator dataset + dataset 73 sampel
+- [x] Validator dataset + dataset **167 sampel**
 - [x] Split train/val deterministik (`data/split_dataset.py`)
 - [x] Konfigurasi & skrip QLoRA (dry-run ready)
 - [x] Skrip export GGUF
 - [x] API lokal OpenAI-compatible
 - [x] Guardrails + workflows + skills
 - [x] Eval harness dasar (mock & endpoint lokal)
+- [x] CI GitHub Actions (sintaks, validasi, split, drift check, eval mock)
 - [ ] Training penuh (butuh GPU)
 - [ ] Evaluasi pada model hasil training
 
