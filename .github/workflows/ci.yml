@@ -1,0 +1,183 @@
+name: CI
+
+# Dijalankan otomatis pada push & pull_request ke branch utama.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Memungkinkan menjalankan manual dari tab Actions.
+  workflow_dispatch:
+
+# Prinsip least-privilege: CI hanya perlu membaca repo.
+permissions:
+  contents: read
+
+# Batalkan run lama bila ada push baru ke ref yang sama.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUNBUFFERED: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  # ----------------------------------------------------------------
+  # Job 1 — Pengecekan sintaks: Python, YAML, JSON/JSONL
+  # ----------------------------------------------------------------
+  syntax:
+    name: Syntax checks (Python / YAML / JSON)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml
+
+      - name: Python syntax check (compileall)
+        run: |
+          echo "== Kompilasi semua modul Python =="
+          python -m compileall -q api data eval src tools
+          echo "OK: semua file Python dapat dikompilasi."
+
+      - name: YAML syntax check
+        run: |
+          python - <<'PY'
+          import pathlib, sys, yaml
+
+          roots = ["configs", ".github"]
+          files = []
+          for root in roots:
+              p = pathlib.Path(root)
+              if p.exists():
+                  files += sorted(list(p.rglob("*.yml")) + list(p.rglob("*.yaml")))
+
+          if not files:
+              print("Tidak ada file YAML ditemukan.")
+              sys.exit(0)
+
+          failed = False
+          for f in files:
+              try:
+                  with f.open(encoding="utf-8") as fh:
+                      list(yaml.safe_load_all(fh))
+                  print(f"OK   {f}")
+              except yaml.YAMLError as exc:
+                  print(f"FAIL {f}: {exc}", file=sys.stderr)
+                  failed = True
+          sys.exit(1 if failed else 0)
+          PY
+
+      - name: JSON / JSONL syntax check
+        run: |
+          python - <<'PY'
+          import json, pathlib, sys
+
+          skip = {".git", "__pycache__", "node_modules", "outputs"}
+
+          def visible(p):
+              return not any(part in skip for part in p.parts)
+
+          json_files = [p for p in sorted(pathlib.Path(".").rglob("*.json")) if visible(p)]
+          jsonl_files = [p for p in sorted(pathlib.Path(".").rglob("*.jsonl")) if visible(p)]
+
+          failed = False
+
+          for f in json_files:
+              try:
+                  json.loads(f.read_text(encoding="utf-8"))
+                  print(f"OK   {f}")
+              except json.JSONDecodeError as exc:
+                  print(f"FAIL {f}: {exc}", file=sys.stderr)
+                  failed = True
+
+          for f in jsonl_files:
+              try:
+                  n = 0
+                  for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+                      if not line.strip():
+                          continue
+                      json.loads(line)
+                      n += 1
+                  print(f"OK   {f} ({n} baris)")
+              except json.JSONDecodeError as exc:
+                  print(f"FAIL {f} baris {i}: {exc}", file=sys.stderr)
+                  failed = True
+
+          if not json_files and not jsonl_files:
+              print("Tidak ada file JSON/JSONL ditemukan.")
+          sys.exit(1 if failed else 0)
+          PY
+
+  # ----------------------------------------------------------------
+  # Job 2 — Validasi dataset, split train/val, dan eval dasar
+  # ----------------------------------------------------------------
+  data-eval:
+    name: Dataset validation / split / eval
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install minimal deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml requests
+
+      - name: Validate dataset (data/samples.jsonl)
+        run: |
+          python data/validate_dataset.py \
+            --path data/samples.jsonl \
+            --strict \
+            --show-errors
+
+      - name: Split dataset (train/val)
+        run: python data/split_dataset.py
+
+      - name: Verify split is reproducible (tidak ada drift)
+        run: |
+          # split_dataset.py deterministik (seed 42). Bila hasilnya berbeda dari
+          # file yang di-commit, berarti samples.jsonl diubah tanpa menjalankan
+          # ulang split -> gagalkan CI agar train/val tidak pernah basi.
+          if ! git diff --quiet -- data/train.jsonl data/val.jsonl; then
+            echo "::error::data/train.jsonl atau data/val.jsonl tidak sinkron dengan data/samples.jsonl."
+            echo "Jalankan: python data/split_dataset.py lalu commit hasilnya."
+            git --no-pager diff --stat -- data/train.jsonl data/val.jsonl
+            exit 1
+          fi
+          echo "OK: train/val sinkron dengan samples.jsonl."
+
+      - name: Validate split files (train & val)
+        run: |
+          python data/validate_dataset.py --path data/train.jsonl --strict
+          python data/validate_dataset.py --path data/val.jsonl --strict
+
+      - name: Run eval harness (mock mode)
+        run: |
+          python eval/run_eval.py \
+            --mode mock \
+            --json-out eval/report.json
+
+      - name: Upload eval report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: eval/report.json
+          if-no-files-found: warn
+          retention-days: 14
