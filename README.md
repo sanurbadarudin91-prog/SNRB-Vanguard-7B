@@ -43,7 +43,7 @@ SNRB-Vanguard-7B/
 │   └── workflows/
 │       └── ci.yml            # CI: sintaks + validasi + split + eval mock
 ├── data/
-│   ├── samples.jsonl         # dataset utama (363 sampel, format messages)
+│   ├── samples.jsonl         # dataset utama (537 sampel, format messages)
 │   ├── train.jsonl           # split training (dihasilkan split_dataset.py)
 │   ├── val.jsonl             # split validasi (dihasilkan split_dataset.py)
 │   ├── train.chat.jsonl      # train + chat template Qwen (format_chat.py)
@@ -110,16 +110,16 @@ python eval/run_eval.py --mode local --base-url http://127.0.0.1:8000
 
 ## Dataset & Split
 
-`data/samples.jsonl` berisi **363 contoh** percakapan format `messages`
+`data/samples.jsonl` berisi **537 contoh** percakapan format `messages`
 (`system` → `user` → `assistant`) yang konsisten dengan persona:
 analisis log/kode, hardening, triase insiden, arsitektur sistem, dan OSINT legal.
 
 | Metrik | Nilai |
 |---|---|
-| Total sampel | **363** |
-| Total karakter | ~348.882 |
-| Estimasi token | ~87.090 (~239/sampel) |
-| Panjang token min/max | 161 / 294 |
+| Total sampel | **537** |
+| Total karakter | ~527.216 |
+| Estimasi token | ~131.606 (~245/sampel) |
+| Panjang token min/max | 161 / 307 |
 | Duplikat id / prompt | **0** |
 
 **Cakupan topik** — keamanan aplikasi (injection, SSRF, deserialization, upload,
@@ -141,12 +141,25 @@ custody, integritas image, memori, YARA, sandbox, kit phishing), kriptografi
 AI/LLM security (prompt injection, RAG, tool permission, model supply chain,
 output guardrail), kepatuhan (GDPR/CCPA, SOC 2, ISO 27001, PCI DSS scope,
 NIST CSF, CIS benchmark), serta arsitektur & operasi (SLO, capacity planning,
-DR test, zero-downtime, canary/blue-green, GitOps, IaC scanning, observability).
+DR test, zero-downtime, canary/blue-green, GitOps, IaC scanning, observability),
+**mobile** (izin Android, komponen exported, Keychain iOS, pinning, deeplink,
+WebView), **Active Directory** (kerberoasting, AS-REP, DCSync, Golden Ticket,
+spraying, GPO/LAPS, LDAP signing, tiered admin, gMSA), **Windows internals**
+(LSASS protection, LOLBin, WMI/scheduled task/registry persistence, DLL
+sideloading, AppLocker vs WDAC, Credential Guard), **Linux internals**
+(systemd hardening, cgroup, namespace, capabilities, SELinux/AppArmor, kernel
+update, sshd lanjutan, auditd), **jaringan lanjutan** (BGP hijack, DNSSEC,
+IPv6, DHCP snooping, ARP spoofing, VLAN, tap placement, TLS inspection),
+**OT/ICS** (zona IEC 62443, patch PLC, remote access SCADA, integritas
+firmware), serta **rekayasa & proses** (pola Go/Python/concurrency, Dockerfile
+multi-stage, graceful shutdown, saga/outbox/CQRS, distributed lock, SQL
+performance, ReDoS, integer overflow, TOCTOU, logika bisnis, supply chain,
+SBOM, lisensi, risk register, vendor assessment).
 
 **Pembagian train/val** (deterministik, `--seed 42`, `--val-ratio 0.2`):
 
 ```bash
-python data/split_dataset.py            # -> data/train.jsonl (290) + data/val.jsonl (73)
+python data/split_dataset.py            # -> data/train.jsonl (430) + data/val.jsonl (107)
 python data/split_dataset.py --val-ratio 0.15 --seed 7
 python data/split_dataset.py --no-validate
 ```
@@ -189,10 +202,10 @@ Output berformat JSONL dengan tiga field: `id`, `n_tokens`, dan `text` (hasil
 
 | Split | Entri | Token min | Token max | Rata-rata | p95 | Total token | Pemakaian batas |
 |---|---|---|---|---|---|---|---|
-| `train.chat.jsonl` | 290 | 219 | **389** | 312,5 | 361 | 90.627 | **19,0 %** |
-| `val.chat.jsonl` | 73 | 269 | **372** | 315,4 | 359 | 23.022 | **18,2 %** |
+| `train.chat.jsonl` | 430 | 219 | **400** | 318,6 | 367 | 137.019 | **19,5 %** |
+| `val.chat.jsonl` | 107 | 259 | **408** | 321,2 | 379 | 34.368 | **19,9 %** |
 
-Tidak ada sampel yang terpotong (`Melebihi batas: 0`) — headroom ~1.659 token
+Tidak ada sampel yang terpotong (`Melebihi batas: 0`) — headroom ~1.640 token
 pada sampel terpanjang. Artinya `max_seq_length: 2048` aman; bahkan bisa
 diturunkan ke 512 untuk menghemat VRAM tanpa kehilangan data.
 
@@ -349,7 +362,7 @@ Detail riset: [`docs/ai-models/`](docs/ai-models/README.md).
 ## Status
 
 - [x] Struktur repository modular
-- [x] Validator dataset + dataset **363 sampel**
+- [x] Validator dataset + dataset **537 sampel**
 - [x] Split train/val deterministik (`data/split_dataset.py`)
 - [x] Chat template Qwen + cek `max_seq_length` (`data/format_chat.py`)
 - [x] Konfigurasi & skrip QLoRA (dry-run ready)
