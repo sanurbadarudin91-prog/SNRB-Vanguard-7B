@@ -1,0 +1,49 @@
+# ==========================================================
+# SNRB-Vanguard-7B — Dependencies
+# ==========================================================
+# Install minimal (API + validasi, tanpa GPU):
+#   pip install -r requirements.txt --no-deps -c /dev/null  # tidak disarankan
+#   -> lebih baik: pip install fastapi uvicorn pydantic pyyaml requests
+#
+# Install penuh (training + API) di mesin ber-GPU:
+#   pip install -r requirements.txt
+# ==========================================================
+
+
+# ----------------------------------------------------------
+# [CORE] API & Validasi — ringan, jalan tanpa GPU
+# ----------------------------------------------------------
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.7.0
+pyyaml>=6.0
+requests>=2.32.0
+
+
+# ----------------------------------------------------------
+# [TRAINING / GPU] — hanya dibutuhkan saat fine-tuning QLoRA
+# ----------------------------------------------------------
+# Catatan: torch & bitsandbytes butuh CUDA runtime yang cocok
+# (mis. CUDA 12.1 -> torch==2.4.x+cu121). Sesuaikan dengan driver.
+torch>=2.3.0
+transformers>=4.44.0
+peft>=0.12.0
+trl>=0.9.6
+datasets>=2.20.0
+accelerate>=0.33.0
+bitsandbytes>=0.43.0
+
+# Opsional tapi disarankan untuk QLoRA di GPU modern
+# (kernel fused lebih cepat & hemat memori)
+# flash-attn>=2.5.0
+# xformers>=0.0.27
+
+
+# ----------------------------------------------------------
+# [EXPORT] — merge adapter & konversi GGUF
+# ----------------------------------------------------------
+# Export GGUF memakai llama.cpp (di-clone terpisah, tidak via pip).
+# Paket Python di bawah membantu proses merge/upload:
+safetensors>=0.4.3
+huggingface-hub>=0.24.0
+sentencepiece>=0.2.0
