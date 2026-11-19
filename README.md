@@ -43,11 +43,14 @@ SNRB-Vanguard-7B/
 │   └── workflows/
 │       └── ci.yml            # CI: sintaks + validasi + split + eval mock
 ├── data/
-│   ├── samples.jsonl         # dataset utama (167 sampel, format messages)
+│   ├── samples.jsonl         # dataset utama (363 sampel, format messages)
 │   ├── train.jsonl           # split training (dihasilkan split_dataset.py)
 │   ├── val.jsonl             # split validasi (dihasilkan split_dataset.py)
+│   ├── train.chat.jsonl      # train + chat template Qwen (format_chat.py)
+│   ├── val.chat.jsonl        # val + chat template Qwen (format_chat.py)
 │   ├── validate_dataset.py   # validator JSONL + statistik token
-│   └── split_dataset.py      # pembagi train/val deterministik (seeded)
+│   ├── split_dataset.py      # pembagi train/val deterministik (seeded)
+│   └── format_chat.py        # konversi chat template Qwen + cek max_seq_length
 ├── prompts/
 │   └── system_persona.md     # aturan main & gaya komunikasi
 ├── configs/
@@ -80,7 +83,7 @@ SNRB-Vanguard-7B/
 
 ```bash
 # 1. Dependensi ringan (API + validasi)
-pip install fastapi uvicorn pydantic pyyaml requests
+pip install fastapi uvicorn pydantic pyyaml requests transformers jinja2
 
 # 2. Validasi dataset
 python data/validate_dataset.py --path data/samples.jsonl --show-errors
@@ -107,40 +110,91 @@ python eval/run_eval.py --mode local --base-url http://127.0.0.1:8000
 
 ## Dataset & Split
 
-`data/samples.jsonl` berisi **167 contoh** percakapan format `messages`
+`data/samples.jsonl` berisi **363 contoh** percakapan format `messages`
 (`system` → `user` → `assistant`) yang konsisten dengan persona:
 analisis log/kode, hardening, triase insiden, arsitektur sistem, dan OSINT legal.
 
 | Metrik | Nilai |
 |---|---|
-| Total sampel | 167 |
-| Total karakter | ~163.256 |
-| Estimasi token | ~40.755 (~244/sampel) |
-| Panjang token min/max | 161 / 292 |
-| Duplikat id / prompt | 0 |
+| Total sampel | **363** |
+| Total karakter | ~348.882 |
+| Estimasi token | ~87.090 (~239/sampel) |
+| Panjang token min/max | 161 / 294 |
+| Duplikat id / prompt | **0** |
 
 **Cakupan topik** — keamanan aplikasi (injection, SSRF, deserialization, upload,
-path traversal, race condition), keamanan cloud (AWS/Azure/GCP, IAM, S3, managed
-identity, metadata SSRF, Terraform state), container & Kubernetes (image
-hardening, resource limit, probe, RBAC, network policy), jaringan (nginx/Apache
-hardening, TLS, WAF tuning, DNS audit, rate limiting), data & database (RLS,
-EXPLAIN, pooling, least privilege, cache invalidation, backup 3-2-1), identitas
-(OAuth/PKCE, SAML vs OIDC, JWT storage, mobile pinning), deteksi & respons
-(SIEM log source, detection engineering, threat hunting, purple team, insiden,
-forensik, containment, recovery), serta arsitektur & operasi (SLO, error budget,
-capacity planning, DR test, zero-downtime deploy, feature flag, supply chain,
-lisensi, privasi/DSR, vendor risk, OSINT legal).
+path traversal, race condition, mass assignment, open redirect, CSRF, XXE,
+SSTI, prototype pollution, request smuggling, cache poisoning), keamanan cloud
+(AWS/Azure/GCP, IAM least privilege, jalur privesc, S3 Block Public Access,
+Lambda, CloudFront origin, audit logging, cost anomaly, cryptomining), container
+& Kubernetes (image hardening, resource limit, probe, RBAC, network policy,
+seccomp/AppArmor, HPA, PDB, escape detection), jaringan (nginx/Apache hardening,
+TLS/cipher, HSTS, OCSP stapling, WAF tuning, DNS filtering, egress filtering,
+IDS placement, segmentation), data & database (RLS, EXPLAIN, pooling, replika
+lag, shard key, migrasi tanpa downtime, masking, retensi, PII discovery),
+identitas (OAuth/PKCE, SAML vs OIDC, JWT vs session, revokasi JWT, MFA rollout,
+PAM, break-glass, conditional access, SSO/SCIM), deteksi & respons (SIEM,
+detection engineering, threat hunting, purple team, triage 4625/Sysmon, timeline,
+containment, ransomware, insider threat, BEC, DLP/UBA), forensik (chain of
+custody, integritas image, memori, YARA, sandbox, kit phishing), kriptografi
+(envelope/KMS, rotasi, mTLS, password storage, crypto-agility, pasca-kuantum),
+AI/LLM security (prompt injection, RAG, tool permission, model supply chain,
+output guardrail), kepatuhan (GDPR/CCPA, SOC 2, ISO 27001, PCI DSS scope,
+NIST CSF, CIS benchmark), serta arsitektur & operasi (SLO, capacity planning,
+DR test, zero-downtime, canary/blue-green, GitOps, IaC scanning, observability).
 
 **Pembagian train/val** (deterministik, `--seed 42`, `--val-ratio 0.2`):
 
 ```bash
-python data/split_dataset.py            # -> data/train.jsonl (134) + data/val.jsonl (33)
+python data/split_dataset.py            # -> data/train.jsonl (290) + data/val.jsonl (73)
 python data/split_dataset.py --val-ratio 0.15 --seed 7
 python data/split_dataset.py --no-validate
 ```
 
 Skrip ini menjamin **tidak ada kebocoran id** antara train & val (dicek
 otomatis), lalu memanggil `validate_dataset.py` pada kedua file.
+
+---
+
+## Chat Template Qwen (siap QLoRA)
+
+`data/format_chat.py` mengubah dataset `messages` menjadi teks siap latih dengan
+chat template resmi `Qwen/Qwen2.5-7B-Instruct`, lalu memeriksa panjang token
+terhadap `data.max_seq_length` di `configs/qlora_default.yaml` (**2048**).
+Skrip ini **hanya memuat tokenizer** — tidak menyentuh bobot model, tidak butuh
+GPU, dan tidak butuh API berbayar.
+
+```bash
+# Konversi (menulis data/train.chat.jsonl & data/val.chat.jsonl)
+python data/format_chat.py --input data/train.jsonl
+python data/format_chat.py --input data/val.jsonl
+
+# Gate CI: gagal bila ada sampel melebihi max_seq_length
+python data/format_chat.py --input data/train.jsonl --no-write --strict
+
+# Pastikan file .chat.jsonl yang di-commit masih sinkron dengan sumbernya
+python data/format_chat.py --input data/train.jsonl --verify
+
+# Tanpa jaringan / tanpa transformers (estimasi konservatif 3 char/token)
+python data/format_chat.py --input data/train.jsonl --offline
+
+# Ganti system prompt dengan persona dari file
+python data/format_chat.py --input data/train.jsonl --persona prompts/system_persona.md
+```
+
+Output berformat JSONL dengan tiga field: `id`, `n_tokens`, dan `text` (hasil
+`apply_chat_template` dengan `<|im_start|>`/`<|im_end|>` ChatML Qwen).
+
+**Hasil pada dataset saat ini** (tokenizer asli, `max_seq_length=2048`):
+
+| Split | Entri | Token min | Token max | Rata-rata | p95 | Total token | Pemakaian batas |
+|---|---|---|---|---|---|---|---|
+| `train.chat.jsonl` | 290 | 219 | **389** | 312,5 | 361 | 90.627 | **19,0 %** |
+| `val.chat.jsonl` | 73 | 269 | **372** | 315,4 | 359 | 23.022 | **18,2 %** |
+
+Tidak ada sampel yang terpotong (`Melebihi batas: 0`) — headroom ~1.659 token
+pada sampel terpanjang. Artinya `max_seq_length: 2048` aman; bahkan bisa
+diturunkan ke 512 untuk menghemat VRAM tanpa kehilangan data.
 
 ---
 
@@ -182,10 +236,12 @@ pada **push** dan **pull_request** ke `main` (juga bisa dijalankan manual via
 | `syntax` | JSON/JSONL check (seluruh repo) | Setiap baris JSONL valid, tidak ada file rusak |
 | `data-eval` | `validate_dataset.py --strict` | Dataset utama 100% valid |
 | `data-eval` | `split_dataset.py` | Split train/val berhasil & disjoint |
-| `data-eval` | **drift check** (`git diff`) | `train.jsonl`/`val.jsonl` sinkron dengan `samples.jsonl` |
+| `data-eval` | **drift check split** (`git diff`) | `train.jsonl`/`val.jsonl` sinkron dengan `samples.jsonl` |
 | `data-eval` | validate train & val | Kedua split valid |
+| `data-eval` | `format_chat.py --verify` | `*.chat.jsonl` sinkron dengan split sumber |
+| `data-eval` | `format_chat.py --strict` | Token nyata (tokenizer Qwen) ≤ `max_seq_length` |
 | `data-eval` | `run_eval.py --mode mock` | Eval dasar lulus (gate) |
-| `data-eval` | upload artifact | Laporan `eval/report.json` tersimpan 14 hari |
+| `data-eval` | upload artifact | `eval/report.json` + laporan token, 14 hari |
 
 **Kontrol keamanan workflow:** `permissions: contents: read` (least privilege),
 `concurrency` membatalkan run lama, action di-pin ke versi mayor (`@v4`/`@v5`),
@@ -202,6 +258,9 @@ python -m compileall -q api data eval src tools
 python data/validate_dataset.py --path data/samples.jsonl --strict --show-errors
 python data/split_dataset.py
 git diff --exit-code -- data/train.jsonl data/val.jsonl   # harus bersih
+python data/format_chat.py --input data/train.jsonl --verify
+python data/format_chat.py --input data/val.jsonl --verify
+python data/format_chat.py --input data/train.jsonl --no-write --strict
 python eval/run_eval.py --mode mock
 ```
 
@@ -290,8 +349,9 @@ Detail riset: [`docs/ai-models/`](docs/ai-models/README.md).
 ## Status
 
 - [x] Struktur repository modular
-- [x] Validator dataset + dataset **167 sampel**
+- [x] Validator dataset + dataset **363 sampel**
 - [x] Split train/val deterministik (`data/split_dataset.py`)
+- [x] Chat template Qwen + cek `max_seq_length` (`data/format_chat.py`)
 - [x] Konfigurasi & skrip QLoRA (dry-run ready)
 - [x] Skrip export GGUF
 - [x] API lokal OpenAI-compatible
