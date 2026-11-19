@@ -43,7 +43,7 @@ SNRB-Vanguard-7B/
 │   └── workflows/
 │       └── ci.yml            # CI: sintaks + validasi + split + eval mock
 ├── data/
-│   ├── samples.jsonl         # dataset utama (537 sampel, format messages)
+│   ├── samples.jsonl         # dataset utama (1003 sampel, format messages)
 │   ├── train.jsonl           # split training (dihasilkan split_dataset.py)
 │   ├── val.jsonl             # split validasi (dihasilkan split_dataset.py)
 │   ├── train.chat.jsonl      # train + chat template Qwen (format_chat.py)
@@ -110,16 +110,16 @@ python eval/run_eval.py --mode local --base-url http://127.0.0.1:8000
 
 ## Dataset & Split
 
-`data/samples.jsonl` berisi **537 contoh** percakapan format `messages`
+`data/samples.jsonl` berisi **1003 contoh** percakapan format `messages`
 (`system` → `user` → `assistant`) yang konsisten dengan persona:
 analisis log/kode, hardening, triase insiden, arsitektur sistem, dan OSINT legal.
 
 | Metrik | Nilai |
 |---|---|
-| Total sampel | **537** |
-| Total karakter | ~527.216 |
-| Estimasi token | ~131.606 (~245/sampel) |
-| Panjang token min/max | 161 / 307 |
+| Total sampel | **1003** |
+| Total karakter | ~979.375 |
+| Estimasi token | ~244.463 (~243/sampel) |
+| Panjang token min/max | 161 / 321 |
 | Duplikat id / prompt | **0** |
 
 **Cakupan topik** — keamanan aplikasi (injection, SSRF, deserialization, upload,
@@ -154,12 +154,12 @@ IPv6, DHCP snooping, ARP spoofing, VLAN, tap placement, TLS inspection),
 firmware), serta **rekayasa & proses** (pola Go/Python/concurrency, Dockerfile
 multi-stage, graceful shutdown, saga/outbox/CQRS, distributed lock, SQL
 performance, ReDoS, integer overflow, TOCTOU, logika bisnis, supply chain,
-SBOM, lisensi, risk register, vendor assessment).
+SBOM, lisensi, risk register, vendor assessment), **cloud mendalam** (IAM policy evaluation, SCP design, CloudTrail integrity, GuardDuty tuning, S3 access points, Lambda VPC, RDS Proxy, KMS grants, Access Analyzer, IMDSv2, cross-account role, VPC endpoint policy, secret rotation, Config conformance, WAF rules, Vault Lock; Azure managed identity, Key Vault, Defender plans, NSG flow logs, Conditional Access, SAS, Private Link, PIM, AKS workload identity, Front Door; GCP org policy, SA keys, VPC-SC, BigQuery access, GKE shielded, audit logs, Secret Manager, Cloud Armor, IAM Recommender), **DevSecOps** (gate design, SAST tuning, secret di pipeline, DAST scheduling, container pipeline, policy as code, threat model di PR, dependency update, test data, postmortem, chaos security, build attestation, batas shift-left), **kriptografi/TLS** (handshake debug, cert chain, SNI/SAN, HSTS, OCSP stapling, mTLS design, key rotation, HSM vs KMS, password hashing, CSPRNG, mode AES, envelope encryption, signing vs encryption, migrasi pasca-kuantum, JWT vs session, timing attack, nonce reuse), **detection engineering** (lifecycle aturan, FP budget, prioritas log source, Sysmon config, anomali auth, lateral movement, DNS tunneling, beaconing, privilege escalation, ransomware, insider, cloud privesc, K8s audit, email compromise, web attack, KQL/SPL, jendela korelasi, konteks alert, purple team loop, ATT&CK mapping, retensi, threat intel, honeytoken, UEBA, D3FEND, uji aturan di CI, parsing log, time sync, tuning aturan berisik, telemetri endpoint, script block logging, command line hunting, FIM, webshell, credential dumping, validasi segmentasi, biaya SIEM, metrik fidelity, log injection, audit vs monitoring, eksfiltrasi, IdP logs, DB audit, API logging, drift, remote access, SOC handoff, triase decision tree, optimasi query, kesehatan sumber log, normalisasi ECS, data source ATT&CK, dashboard, suppression, struktur Sigma, IOC vs TTP, estimasi volume, korelasi, sampling risk, skor risiko identitas, matriks severity, enrichment pipeline, otomasi runbook, backlog, gap log cloud, dedup, prioritas TTP, pelaporan eksekutif, enkripsi log, stack SOC, detection as code, tampering, prioritas shift, reliability pipeline), **OSINT & forensik** (batas legal, attack surface mapping, eksposur email, subdomain takeover, impersonasi brand, kredensial bocor, pivot infrastruktur, recon SE, kit phishing, CT logs, Shodan, Wayback, metadata dokumen, kebocoran GitHub; akuisisi disk, memori, timeline, browser, registry, Linux, mobile, cloud logs, anti-forensik, chain of custody, laporan, SQLite recovery, YARA, handling sampel, PCAP, VSS, email header, event log Windows), **AI/LLM security** (prompt injection, kebocoran RAG, izin tool agent, supply chain model, guardrail output, privasi data training, LLM DoS, embedding inversion, monitoring model, secret di prompt, memori agent, auth aplikasi LLM, deteksi jailbreak, evaluasi keamanan model, logging privasi, kualitas data fine-tune, chunking RAG, cost abuse, risiko multimodal), serta **pola triase SOC** (15 menit pertama, kebiasaan korelasi, dokumentasi FP, kriteria eskalasi, verifikasi vs asumsi, cakupan dampak, time-boxing, verifikasi pengguna, pilihan containment, verifikasi output tool, matriks prioritas, kualitas handoff, catatan bukti, SLA tracking, hipotesis-driven, komunikasi, post-triage review, gap tooling, alert vendor, jebakan satu sumber, traffic terenkripsi, klasifikasi malware, safety-first OT, identitas dulu di cloud, timeline dulu, alert fatigue, metrik pribadi, learning loop, verifikasi pemulihan, cakupan data).
 
 **Pembagian train/val** (deterministik, `--seed 42`, `--val-ratio 0.2`):
 
 ```bash
-python data/split_dataset.py            # -> data/train.jsonl (430) + data/val.jsonl (107)
+python data/split_dataset.py            # -> data/train.jsonl (802) + data/val.jsonl (201)
 python data/split_dataset.py --val-ratio 0.15 --seed 7
 python data/split_dataset.py --no-validate
 ```
@@ -202,10 +202,10 @@ Output berformat JSONL dengan tiga field: `id`, `n_tokens`, dan `text` (hasil
 
 | Split | Entri | Token min | Token max | Rata-rata | p95 | Total token | Pemakaian batas |
 |---|---|---|---|---|---|---|---|
-| `train.chat.jsonl` | 430 | 219 | **400** | 318,6 | 367 | 137.019 | **19,5 %** |
-| `val.chat.jsonl` | 107 | 259 | **408** | 321,2 | 379 | 34.368 | **19,9 %** |
+| `train.chat.jsonl` | 802 | 219 | **447** | 318,9 | 375 | 255.761 | **21,8 %** |
+| `val.chat.jsonl` | 201 | 264 | **408** | 317,0 | 372 | 63.714 | **19,9 %** |
 
-Tidak ada sampel yang terpotong (`Melebihi batas: 0`) — headroom ~1.640 token
+Tidak ada sampel yang terpotong (`Melebihi batas: 0`) — headroom ~1.601 token
 pada sampel terpanjang. Artinya `max_seq_length: 2048` aman; bahkan bisa
 diturunkan ke 512 untuk menghemat VRAM tanpa kehilangan data.
 
@@ -362,7 +362,7 @@ Detail riset: [`docs/ai-models/`](docs/ai-models/README.md).
 ## Status
 
 - [x] Struktur repository modular
-- [x] Validator dataset + dataset **537 sampel**
+- [x] Validator dataset + dataset **1003 sampel**
 - [x] Split train/val deterministik (`data/split_dataset.py`)
 - [x] Chat template Qwen + cek `max_seq_length` (`data/format_chat.py`)
 - [x] Konfigurasi & skrip QLoRA (dry-run ready)
