@@ -30,10 +30,16 @@ jinja2>=3.1.0
 # ----------------------------------------------------------
 # Catatan: torch & bitsandbytes butuh CUDA runtime yang cocok
 # (mis. CUDA 12.1 -> torch==2.4.x+cu121). Sesuaikan dengan driver.
+#
+# Batas atas di bawah menjaga kompatibilitas argumen SFTConfig:
+#   trl >= 0.12 memakai `max_length` (bukan `max_seq_length`)
+#   transformers v6 mengganti `gradient_checkpointing` -> `activation_checkpointing`
+# `src/train_qlora.py` sudah menangani kedua versi, tapi pin ini mencegah
+# lompatan mayor yang belum diuji.
 torch>=2.3.0
-transformers>=4.44.0
+transformers>=4.44.0,<6
 peft>=0.12.0
-trl>=0.9.6
+trl>=0.9.6,<2
 datasets>=2.20.0
 accelerate>=0.33.0
 bitsandbytes>=0.43.0

@@ -55,7 +55,8 @@ training:
 data:
   dataset_path: "data/samples.jsonl"
   # Panjang sequence maksimum (token). Turunkan bila VRAM terbatas.
-  max_seq_length: 2048
+  # Dataset saat ini max 447 token, jadi 512 sudah cukup tanpa memotong sampel.
+  max_seq_length: 512
   validation_split: 0.0
   # Gunakan chat template bawaan model agar format konsisten
   use_chat_template: true

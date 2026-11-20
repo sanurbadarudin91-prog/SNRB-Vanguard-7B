@@ -46,8 +46,14 @@ jobs:
       - name: Python syntax check (compileall)
         run: |
           echo "== Kompilasi semua modul Python =="
-          python -m compileall -q api data eval src tools
+          python -m compileall -q api data eval src tools tests
           echo "OK: semua file Python dapat dikompilasi."
+
+      - name: Training script compatibility (tanpa GPU / trl)
+        run: |
+          # Memastikan argumen SFTConfig/SFTTrainer tidak memicu TypeError
+          # pada versi library apa pun (trl baru: max_length, lama: max_seq_length).
+          python tests/test_train_qlora_compat.py
 
       - name: YAML syntax check
         run: |
