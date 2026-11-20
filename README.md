@@ -173,7 +173,7 @@ otomatis), lalu memanggil `validate_dataset.py` pada kedua file.
 
 `data/format_chat.py` mengubah dataset `messages` menjadi teks siap latih dengan
 chat template resmi `Qwen/Qwen2.5-7B-Instruct`, lalu memeriksa panjang token
-terhadap `data.max_seq_length` di `configs/qlora_default.yaml` (**2048**).
+terhadap `data.max_seq_length` di `configs/qlora_default.yaml` (**512**).
 Skrip ini **hanya memuat tokenizer** — tidak menyentuh bobot model, tidak butuh
 GPU, dan tidak butuh API berbayar.
 
@@ -198,16 +198,17 @@ python data/format_chat.py --input data/train.jsonl --persona prompts/system_per
 Output berformat JSONL dengan tiga field: `id`, `n_tokens`, dan `text` (hasil
 `apply_chat_template` dengan `<|im_start|>`/`<|im_end|>` ChatML Qwen).
 
-**Hasil pada dataset saat ini** (tokenizer asli, `max_seq_length=2048`):
+**Hasil pada dataset saat ini** (tokenizer asli, `max_seq_length=512`):
 
 | Split | Entri | Token min | Token max | Rata-rata | p95 | Total token | Pemakaian batas |
 |---|---|---|---|---|---|---|---|
-| `train.chat.jsonl` | 802 | 219 | **447** | 318,9 | 375 | 255.761 | **21,8 %** |
-| `val.chat.jsonl` | 201 | 264 | **408** | 317,0 | 372 | 63.714 | **19,9 %** |
+| `train.chat.jsonl` | 802 | 219 | **447** | 318,9 | 375 | 255.761 | **87,3 %** |
+| `val.chat.jsonl` | 201 | 264 | **408** | 317,0 | 372 | 63.714 | **79,7 %** |
 
-Tidak ada sampel yang terpotong (`Melebihi batas: 0`) — headroom ~1.601 token
-pada sampel terpanjang. Artinya `max_seq_length: 2048` aman; bahkan bisa
-diturunkan ke 512 untuk menghemat VRAM tanpa kehilangan data.
+Tidak ada sampel yang terpotong (`Melebihi batas: 0`) — headroom 65 token pada
+sampel terpanjang (447 dari 512). Nilai 512 dipilih agar training QLoRA di GPU
+T4 (16 GB) hemat VRAM tanpa memotong satu sampel pun; `max_seq_length` yang
+lebih besar hanya membuang memori untuk padding.
 
 ---
 
@@ -284,6 +285,9 @@ python eval/run_eval.py --mode mock
 ```bash
 pip install -r requirements.txt   # termasuk torch, transformers, peft, trl, bitsandbytes
 
+# Validasi argumen SFTConfig/SFTTrainer tanpa GPU & tanpa memuat model
+python src/train_qlora.py --config configs/qlora_default.yaml --check-config
+
 # Uji pipeline 3 step (dry-run)
 python src/train_qlora.py --config configs/qlora_default.yaml --dry-run
 
@@ -292,6 +296,25 @@ python src/train_qlora.py --config configs/qlora_default.yaml --dataset data/tra
 ```
 
 Output adapter: `outputs/snrb-vanguard-7b-qlora/final_adapter/`
+
+### Kompatibilitas `trl` / `transformers`
+
+`src/train_qlora.py` menyusun `SFTConfig` lewat introspeksi signature, jadi tidak
+memicu `TypeError` saat library berganti nama argumen:
+
+| Argumen config | trl/transformers lama | trl/transformers baru |
+|---|---|---|
+| `max_seq_length: 512` | `max_seq_length` | `max_length` |
+| `warmup_ratio: 0.03` | `warmup_ratio` | dihitung → `warmup_steps` |
+| `gradient_checkpointing: true` | `gradient_checkpointing` | `activation_checkpointing` |
+| `group_by_length: true` | `group_by_length` | dataset diurutkan per `length` |
+
+Argumen yang tidak dikenal versi terpasang **dilaporkan** (`[WARN] ... dilewati`),
+tidak dibuang diam-diam. Presisi campuran juga disesuaikan otomatis: di T4
+(tidak mendukung bfloat16) `bf16` turun ke `fp16`.
+
+Jalankan `python tests/test_train_qlora_compat.py` untuk memverifikasi pemetaan
+ini tanpa GPU; langkah yang sama dijalankan di CI.
 
 ### Export ke GGUF
 
