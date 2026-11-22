@@ -182,3 +182,29 @@ Detail riset: [`docs/ai-models/`](docs/ai-models/README.md).
 ## Lisensi
 
 Belum ditetapkan. Tambahkan `LICENSE` sebelum publikasi resmi.
+
+---
+
+## Fine-tuning di Google Colab (GPU T4)
+
+Untuk melakukan training di Google Colab menggunakan GPU T4:
+
+1. **Mount Google Drive** untuk menyimpan hasil training (adapter & checkpoint):
+   ```python
+   from google.colab import drive
+   drive.mount('/content/drive')
+   ```
+2. **Setup Environment**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. **Training**:
+   ```bash
+   python src/train_qlora.py --config configs/qlora_default.yaml --dataset data/samples.jsonl
+   ```
+4. **Backup ke Google Drive**:
+   Setelah selesai, salin hasil training:
+   ```bash
+   cp -r outputs/snrb-vanguard-7b-qlora-3500 /content/drive/MyDrive/SNRB-Vanguard-7B-outputs/
+   ```
+   *Catatan: Pastikan `output_dir` di `configs/qlora_default.yaml` sesuai dengan path yang digunakan.*

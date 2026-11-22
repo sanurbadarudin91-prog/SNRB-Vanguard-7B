@@ -10,7 +10,7 @@ model:
   # 4-bit quantization (NF4) -> hemat VRAM, kualitas mendekati fp16
   load_in_4bit: true
   bnb_4bit_quant_type: "nf4"
-  bnb_4bit_compute_dtype: "bfloat16"
+  bnb_4bit_compute_dtype: "float16" # T4 prefers fp16
   bnb_4bit_use_double_quant: true
   trust_remote_code: true
   # Aktifkan bila GPU mendukung flash-attention 2
@@ -32,7 +32,7 @@ lora:
     - "down_proj"
 
 training:
-  output_dir: "outputs/snrb-vanguard-7b-qlora"
+  output_dir: "outputs/snrb-vanguard-7b-qlora-3500" # Folder baru untuk hasil 3500 sampel
   num_train_epochs: 3
   per_device_train_batch_size: 1
   gradient_accumulation_steps: 16
@@ -42,10 +42,10 @@ training:
   weight_decay: 0.01
   max_grad_norm: 1.0
   logging_steps: 10
-  save_steps: 100
-  save_total_limit: 3
-  bf16: true
-  fp16: false
+  save_steps: 500 # Simpan checkpoint lebih jarang untuk mencegah saturasi disk
+  save_total_limit: 2 # Hanya simpan 2 checkpoint terakhir
+  bf16: false # T4 tidak support bfloat16
+  fp16: true # T4 optimal dengan fp16
   optim: "paged_adamw_8bit"
   gradient_checkpointing: true
   group_by_length: true
@@ -55,7 +55,7 @@ training:
 data:
   dataset_path: "data/samples.jsonl"
   # Panjang sequence maksimum (token). Turunkan bila VRAM terbatas.
-  max_seq_length: 2048
+  max_seq_length: 512 # Aman untuk T4
   validation_split: 0.0
   # Gunakan chat template bawaan model agar format konsisten
   use_chat_template: true
